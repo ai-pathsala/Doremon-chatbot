@@ -116,9 +116,7 @@ if "question_streak" not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Setup")
 
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        api_key = st.text_input("Groq API Key", type="password", help="Get one free at console.groq.com")
+    api_key = st.secrets["GROQ_API_KEY"]
 
     st.divider()
 
@@ -159,10 +157,7 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    if not api_key:
-        st.error("Please enter your Groq API key in the sidebar first.")
-        st.stop()
-
+   
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
