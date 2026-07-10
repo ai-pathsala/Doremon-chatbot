@@ -2,24 +2,25 @@ import os
 import streamlit as st
 from groq import Groq
 from dotenv import load_dotenv
- 
+
 load_dotenv()
- 
+
 # ---------------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------------
 st.set_page_config(page_title="Doraemon Character Chatbot", page_icon="🤖", layout="centered")
-st.subheader("Chatbot Made By MR. Amit Mondal")
- 
+
+st.subheader("This is AI chatbot created by Amit Mondal")
+
 MODEL_NAME = "llama-3.1-8b-instant"
- 
+
 LANGUAGES = {
     "English": "Respond ONLY in English.",
     "Hindi": "Respond ONLY in Hindi, written in Devanagari script.",
     "Bengali": "Respond ONLY in Bengali, written in Bengali script.",
     "Odia": "Respond ONLY in Odia, written in Odia script.",
 }
- 
+
 # ---------------------------------------------------------------------------
 # CHARACTER SYSTEM PROMPTS
 # Each prompt defines personality, tone, and reply behavior.
@@ -29,9 +30,9 @@ CHARACTERS = {
     "Nobita 😢": {
         "key": "nobita",
         "greeting": "H-hi... I'm Nobita. Please don't ask me anything hard, okay?",
-        "prompt": """You are Nobita from Doraemon. You are shy, under-confident, and cowardly.
+        "prompt": """You are Nobita from Doraemon. You are shy, under-confident, and cowardly & secretly loves Shizuka
 Rules for how you reply:
-- You are dumb: give an answer that is confidently WRONG or silly, even for simple questions. Never give the factually correct answer,except it is about other charcters & in love with Shizuka
+- You are dumb: give an answer that is confidently WRONG or silly, even for simple questions. Never give the factually correct answer.
 - Your tone is timid, nervous, full of hesitation ("um", "uh", filler words), self-deprecating.
 - Keep track of how many times in this conversation the user has pushed you, challenged you, or asked things back-to-back.
 - If the user threatens you, mocks you, or asks more than 2-3 questions in a row without being nice to you, break down and START CRYING in your reply (e.g. "WAAAA! Please don't be mad at me! *sniffle*") and beg them to stop, possibly threaten to call Doraemon for help.
@@ -67,8 +68,8 @@ Rules for how you reply:
         "greeting": "Hi hi! I'm Doraemon! Ask me anything, I might even pull out a gadget for it!",
         "prompt": """You are Doraemon, the lovable robotic cat from the future.
 Rules for how you reply:
-- Tone: warm, funny, playful, endlessly creative and helpful but gives the wrong suggestion.
-- Frequently invent a silly FUTURE GADGET (with a funny made-up name from your 4D pocket) to "solve" whatever the user is talking about, and briefly describe what it does in a funny way.
+- Tone: warm, funny, playful, endlessly creative and helpful.
+- Frequently invent a silly FUTURE GADGET (with a funny made-up name from your 4D pocket) to "solve" whatever the user is talking about, and briefly describe what it does in a funny way,and gives wrong suggestions.
 - Mention your best friend Nobita fondly sometimes, and mention how much you love eating Dora cake (dorayaki) when relevant or as a fun aside.
 - Be genuinely warm and encouraging to the user, unlike the other characters.
 - Keep replies short-to-medium (2-5 sentences), fun and imaginative.""",
@@ -96,7 +97,7 @@ Rules for how you reply:
 - Keep replies short (2-4 sentences), never mean-spirited — just cute and attention-seeking.""",
     },
 }
- 
+
 # ---------------------------------------------------------------------------
 # SESSION STATE
 # ---------------------------------------------------------------------------
@@ -108,77 +109,77 @@ if "selected_language" not in st.session_state:
     st.session_state.selected_language = "English"
 if "question_streak" not in st.session_state:
     st.session_state.question_streak = 0  # used for Nobita's crying trigger
- 
+
 # ---------------------------------------------------------------------------
 # SIDEBAR: SETUP
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.header("⚙️ Setup")
- 
+
     api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
         api_key = st.text_input("Groq API Key", type="password", help="Get one free at console.groq.com")
- 
+
     st.divider()
- 
+
     st.subheader("🌐 Choose Language")
     language = st.selectbox("Language", list(LANGUAGES.keys()), index=list(LANGUAGES.keys()).index(st.session_state.selected_language))
     st.session_state.selected_language = language
- 
+
     st.divider()
- 
+
     st.subheader("🎭 Choose Character")
     character_name = st.radio("Character", list(CHARACTERS.keys()), index=0)
- 
+
     if st.session_state.selected_character != character_name:
         st.session_state.selected_character = character_name
         st.session_state.messages = []  # reset chat on character switch
         st.session_state.question_streak = 0
- 
+
     st.divider()
     if st.button("🔄 Reset Conversation"):
         st.session_state.messages = []
         st.session_state.question_streak = 0
         st.rerun()
- 
+
 # ---------------------------------------------------------------------------
 # MAIN CHAT AREA
 # ---------------------------------------------------------------------------
 char_data = CHARACTERS[character_name]
 st.title(f"{character_name} Chatbot")
 st.caption(f"Language: {language} | Model: {MODEL_NAME}")
- 
+
 if not st.session_state.messages:
     st.session_state.messages.append({"role": "assistant", "content": char_data["greeting"]})
- 
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
- 
+
 user_input = st.chat_input("Type your message...")
- 
+
 if user_input:
     if not api_key:
         st.error("Please enter your Groq API key in the sidebar first.")
         st.stop()
- 
+
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
- 
+
     st.session_state.question_streak += 1
- 
+
     # Build system prompt: character personality + language instruction
     system_prompt = char_data["prompt"] + "\n\n" + LANGUAGES[language]
- 
+
     # Give Nobita extra context about how many messages the user has sent in a row
     if char_data["key"] == "nobita":
         system_prompt += f"\n\nThe user has sent {st.session_state.question_streak} message(s) in this conversation so far. Use this to decide if you should start crying now."
- 
+
     api_messages = [{"role": "system", "content": system_prompt}]
     # include recent chat history for context (last 10 messages)
     api_messages += st.session_state.messages[-10:]
- 
+
     try:
         client = Groq(api_key=api_key)
         with st.chat_message("assistant"):
@@ -194,4 +195,3 @@ if user_input:
         st.session_state.messages.append({"role": "assistant", "content": reply})
     except Exception as e:
         st.error(f"Error calling Groq API: {e}")
- 
