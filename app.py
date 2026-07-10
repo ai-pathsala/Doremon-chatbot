@@ -117,7 +117,6 @@ with st.sidebar:
     st.header("⚙️ Setup")
 
     api_key = st.secrets["GROQ_API_KEY"]
-
     st.divider()
 
     st.subheader("🌐 Choose Language")
@@ -157,7 +156,10 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-   
+    if not api_key:
+        st.error("Please enter your Groq API key in the sidebar first.")
+        st.stop()
+
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
