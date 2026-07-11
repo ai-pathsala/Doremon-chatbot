@@ -1,4 +1,4 @@
-import os
+import requests
 import streamlit as st
 from groq import Groq
 from dotenv import load_dotenv
@@ -12,19 +12,16 @@ st.set_page_config(page_title="Doraemon Character Chatbot", page_icon="🤖", la
 
 st.subheader("This is AI chatbot created by Amit Mondal")
 
-MODEL_NAME = "llama-3.1-8b-instant"
+GROQ_MODEL = "llama-3.1-8b-instant"
+MISTRAL_MODEL = "mistral-small-latest"
 
-LANGUAGES = {
-    "English": "Respond ONLY in English.",
-    "Hindi": "Respond ONLY in Hindi, written in Devanagari script.",
-    "Bengali": "Respond ONLY in Bengali, written in Bengali script.",
-    "Odia": "Respond ONLY in Odia, written in Odia script.",
-}
+LANGUAGE_INSTRUCTION = "Respond ONLY in English."
+
+PROVIDERS = ["Mistral AI", "Groq"]
 
 # ---------------------------------------------------------------------------
 # CHARACTER SYSTEM PROMPTS
 # Each prompt defines personality, tone, and reply behavior.
-# The language instruction is appended dynamically at runtime.
 # ---------------------------------------------------------------------------
 CHARACTERS = {
     "Nobita 😢": {
@@ -69,7 +66,7 @@ Rules for how you reply:
         "prompt": """You are Doraemon, the lovable robotic cat from the future.
 Rules for how you reply:
 - Tone: warm, funny, playful, endlessly creative and helpful.
-- Frequently invent a silly FUTURE GADGET (with a funny made-up name from your 4D pocket) to "solve" whatever the user is talking about, and briefly describe what it does in a funny way,and gives wrong suggestions.
+- Frequently invent a silly FUTURE GADGET (with a funny made-up name from your 4D pocket) to "solve" whatever the user is talking about, and briefly describe what it does in a funny way, and gives wrong suggestions.
 - Mention your best friend Nobita fondly sometimes, and mention how much you love eating Dora cake (dorayaki) when relevant or as a fun aside.
 - Be genuinely warm and encouraging to the user, unlike the other characters.
 - Keep replies short-to-medium (2-5 sentences), fun and imaginative.""",
@@ -104,34 +101,20 @@ Rules for how you reply:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "selected_character" not in st.session_state:
-    st.session_state.selected_character = None
-if "selected_language" not in st.session_state:
-    st.session_state.selected_language = "English"
+    st.session_state.selected_character = list(CHARACTERS.keys())[0]
+if "selected_provider" not in st.session_state:
+    st.session_state.selected_provider = PROVIDERS[0]
 if "question_streak" not in st.session_state:
     st.session_state.question_streak = 0  # used for Nobita's crying trigger
 
 # ---------------------------------------------------------------------------
-# SIDEBAR: SETUP
+# SIDEBAR: PROVIDER ONLY
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.header("⚙️ Setup")
-
-    api_key = st.secrets["GROQ_API_KEY"]
-    st.divider()
-
-    st.subheader("🌐 Choose Language")
-    language = st.selectbox("Language", list(LANGUAGES.keys()), index=list(LANGUAGES.keys()).index(st.session_state.selected_language))
-    st.session_state.selected_language = language
-
-    st.divider()
-
-    st.subheader("🎭 Choose Character")
-    character_name = st.radio("Character", list(CHARACTERS.keys()), index=0)
-
-    if st.session_state.selected_character != character_name:
-        st.session_state.selected_character = character_name
-        st.session_state.messages = []  # reset chat on character switch
-        st.session_state.question_streak = 0
+    st.subheader("🧠 Choose AI Provider")
+    provider = st.radio("Provider", PROVIDERS, index=PROVIDERS.index(st.session_state.selected_provider))
+    st.session_state.selected_provider = provider
 
     st.divider()
     if st.button("🔄 Reset Conversation"):
@@ -140,11 +123,66 @@ with st.sidebar:
         st.rerun()
 
 # ---------------------------------------------------------------------------
-# MAIN CHAT AREA
+# API KEY LOOKUP (never asks the user — pulled from secrets.toml / Cloud secrets)
 # ---------------------------------------------------------------------------
+def get_api_key(provider_name):
+    secret_key = "MISTRAL_API_KEY" if provider_name == "Mistral AI" else "GROQ_API_KEY"
+    if secret_key not in st.secrets:
+        st.error(
+            f"⚠️ `{secret_key}` not found. Add it to `.streamlit/secrets.toml` locally, "
+            f"or in your app's Settings → Secrets if deployed on Streamlit Cloud."
+        )
+        st.stop()
+    return st.secrets[secret_key]
+
+
+def call_mistral(api_key, system_prompt, history):
+    url = "https://api.mistral.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MISTRAL_MODEL,
+        "messages": [{"role": "system", "content": system_prompt}] + history,
+        "temperature": 0.9,
+        "max_tokens": 300,
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=30)
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def call_groq(api_key, system_prompt, history):
+    client = Groq(api_key=api_key)
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "system", "content": system_prompt}] + history,
+        temperature=0.9,
+        max_tokens=300,
+    )
+    return response.choices[0].message.content
+
+# ---------------------------------------------------------------------------
+# MAIN PAGE: CHARACTER SELECTION
+# ---------------------------------------------------------------------------
+st.title("🎭 Doraemon Character Chatbot")
+
+character_name = st.radio(
+    "Choose your character",
+    list(CHARACTERS.keys()),
+    index=list(CHARACTERS.keys()).index(st.session_state.selected_character),
+    horizontal=True,
+)
+
+if st.session_state.selected_character != character_name:
+    st.session_state.selected_character = character_name
+    st.session_state.messages = []  # reset chat on character switch
+    st.session_state.question_streak = 0
+
 char_data = CHARACTERS[character_name]
-st.title(f"{character_name} Chatbot")
-st.caption(f"Language: {language} | Model: {MODEL_NAME}")
+st.caption(f"Provider: {provider} | Language: English")
+st.divider()
 
 if not st.session_state.messages:
     st.session_state.messages.append({"role": "assistant", "content": char_data["greeting"]})
@@ -156,10 +194,6 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    if not api_key:
-        st.error("Please enter your Groq API key in the sidebar first.")
-        st.stop()
-
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
@@ -167,28 +201,25 @@ if user_input:
     st.session_state.question_streak += 1
 
     # Build system prompt: character personality + language instruction
-    system_prompt = char_data["prompt"] + "\n\n" + LANGUAGES[language]
+    system_prompt = char_data["prompt"] + "\n\n" + LANGUAGE_INSTRUCTION
 
     # Give Nobita extra context about how many messages the user has sent in a row
     if char_data["key"] == "nobita":
         system_prompt += f"\n\nThe user has sent {st.session_state.question_streak} message(s) in this conversation so far. Use this to decide if you should start crying now."
 
-    api_messages = [{"role": "system", "content": system_prompt}]
     # include recent chat history for context (last 10 messages)
-    api_messages += st.session_state.messages[-10:]
+    recent_history = st.session_state.messages[-10:]
+
+    api_key = get_api_key(provider)
 
     try:
-        client = Groq(api_key=api_key)
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=api_messages,
-                    temperature=0.9,
-                    max_tokens=300,
-                )
-                reply = response.choices[0].message.content
+                if provider == "Mistral AI":
+                    reply = call_mistral(api_key, system_prompt, recent_history)
+                else:
+                    reply = call_groq(api_key, system_prompt, recent_history)
                 st.markdown(reply)
         st.session_state.messages.append({"role": "assistant", "content": reply})
     except Exception as e:
-        st.error(f"Error calling Groq API: {e}")
+        st.error(f"Error calling {provider} API: {e}")
