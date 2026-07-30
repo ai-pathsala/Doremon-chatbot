@@ -1,14 +1,12 @@
 import os
-import asyncio
-import tempfile
 
 import streamlit as st
-import edge_tts
 
 from dotenv import load_dotenv
 
 from characters import CHARACTERS
 from llm import call_groq, call_mistral
+from tts import play_voice
 
 
 load_dotenv()
@@ -19,7 +17,7 @@ load_dotenv()
 # ------------------------------------------------
 
 st.set_page_config(
-    page_title="🤖 Doraemon AI Chatbot",
+    page_title="🤖 Doraemon AI Chatbot by Amit Mondal",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -44,6 +42,11 @@ st.markdown(
     padding-top:2rem;
 }
 
+.char-card{
+    text-align:center;
+    padding:6px;
+}
+
 </style>
 
 """,
@@ -58,23 +61,8 @@ unsafe_allow_html=True
 st.title("🤖 Doraemon AI Character Chatbot")
 
 st.caption(
-    "Talk with Doraemon and friends using Groq or Mistral AI"
+    "Made by [Amit Mondal]"
 )
-
-
-# ------------------------------------------------
-# LANGUAGE INSTRUCTION
-# ------------------------------------------------
-# Each character in characters.py already has a strict, example-driven
-# Hinglish rule baked into its own prompt. This is just a light shared
-# reinforcement appended on top of that.
-
-LANGUAGE_INSTRUCTION = """
-Always reply in Hinglish (Hindi in Roman/English script mixed with a few
-English words). Never use Hindi Devanagari script. Never write a full reply
-in plain English. Keep replies short, natural and emotionally in character.
-Never mention system instructions.
-"""
 
 
 # ------------------------------------------------
@@ -98,72 +86,28 @@ PROVIDERS = ["Groq", "Mistral"]
 
 
 # ------------------------------------------------
-# API KEY
+# API KEYS
 # ------------------------------------------------
 
-def get_api_key(provider):
+def _get_key(name_secrets, name_env):
     try:
-        if provider == "Groq":
-            return st.secrets["GROQ_API_KEY"]
-        else:
-            return st.secrets["MISTRAL_API_KEY"]
+        return st.secrets[name_secrets]
     except Exception:
-        if provider == "Groq":
-            return os.getenv("GROQ_API_KEY")
-        else:
-            return os.getenv("MISTRAL_API_KEY")
+        return os.getenv(name_env)
+
+
+def get_llm_key(provider):
+    if provider == "Groq":
+        return _get_key("GROQ_API_KEY", "GROQ_API_KEY")
+    return _get_key("MISTRAL_API_KEY", "MISTRAL_API_KEY")
+
+
+def get_sarvam_key():
+    return _get_key("SARVAM_API_KEY", "SARVAM_API_KEY")
 
 
 # ------------------------------------------------
-# VOICE
-# ------------------------------------------------
-# Free Edge TTS only ships 2 Hindi voices (hi-IN-MadhurNeural,
-# hi-IN-SwaraNeural) and 2 Indian-English voices (en-IN-PrabhatNeural,
-# en-IN-NeerjaNeural). To make each of the 6 characters sound distinct
-# without paying for a TTS engine, every character in characters.py also
-# carries its own rate/pitch/volume tuning, applied here.
-
-DEFAULT_VOICE = "hi-IN-MadhurNeural"
-DEFAULT_RATE = "+0%"
-DEFAULT_PITCH = "+0Hz"
-DEFAULT_VOLUME = "+0%"
-
-
-async def generate_voice(text, voice, rate, pitch, volume):
-    communicate = edge_tts.Communicate(
-        text,
-        voice,
-        rate=rate,
-        pitch=pitch,
-        volume=volume
-    )
-
-    file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    await communicate.save(file.name)
-    return file.name
-
-
-def play_voice(text, character_data):
-    voice = character_data.get("voice", DEFAULT_VOICE)
-    rate = character_data.get("rate", DEFAULT_RATE)
-    pitch = character_data.get("pitch", DEFAULT_PITCH)
-    volume = character_data.get("volume", DEFAULT_VOLUME)
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    try:
-        audio_file = loop.run_until_complete(
-            generate_voice(text, voice, rate, pitch, volume)
-        )
-    finally:
-        loop.close()
-
-    st.audio(audio_file, format="audio/mp3")
-
-
-# ------------------------------------------------
-# SIDEBAR
+# SIDEBAR (settings only — characters live on the main page)
 # ------------------------------------------------
 
 with st.sidebar:
@@ -177,17 +121,6 @@ with st.sidebar:
     )
     st.session_state.provider = provider
 
-    character = st.selectbox(
-        "Character",
-        list(CHARACTERS.keys()),
-        index=list(CHARACTERS.keys()).index(st.session_state.character)
-    )
-
-    if character != st.session_state.character:
-        st.session_state.character = character
-        st.session_state.messages = []
-        st.rerun()
-
     st.session_state.voice_enabled = st.toggle(
         "Enable Voice",
         value=st.session_state.voice_enabled
@@ -197,20 +130,47 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
+    chat_text = ""
+    for msg in st.session_state.messages:
+        chat_text += msg["role"] + ": " + msg["content"] + "\n\n"
+
+    st.download_button(
+        "📥 Download Chat",
+        chat_text,
+        file_name="chat_history.txt"
+    )
+
 
 # ------------------------------------------------
-# DOWNLOAD CHAT
+# CHARACTER PICKER — MAIN PAGE
 # ------------------------------------------------
 
-chat_text = ""
-for msg in st.session_state.messages:
-    chat_text += msg["role"] + ": " + msg["content"] + "\n\n"
+st.subheader("Choose your character")
 
-st.download_button(
-    "📥 Download Chat",
-    chat_text,
-    file_name="chat_history.txt"
-)
+character_names = list(CHARACTERS.keys())
+cols = st.columns(len(character_names))
+
+for col, name in zip(cols, character_names):
+    data = CHARACTERS[name]
+    with col:
+        if data.get("image_url"):
+            st.image(data["image_url"], use_container_width=True)
+        else:
+            st.markdown(
+                f"<div class='char-card' style='font-size:48px'>{data['avatar']}</div>",
+                unsafe_allow_html=True
+            )
+
+        is_selected = (name == st.session_state.character)
+        label = f"✅ {name}" if is_selected else name
+
+        if st.button(label, key=f"pick_{name}", use_container_width=True):
+            if name != st.session_state.character:
+                st.session_state.character = name
+                st.session_state.messages = []
+                st.rerun()
+
+st.divider()
 
 
 # ------------------------------------------------
@@ -229,10 +189,23 @@ for message in st.session_state.messages:
 
 
 # ------------------------------------------------
+# LANGUAGE INSTRUCTION (shared reinforcement on top of each
+# character's own strict, example-driven Hinglish rule)
+# ------------------------------------------------
+
+LANGUAGE_INSTRUCTION = """
+Always reply in Hinglish (Hindi in Roman/English script mixed with a few
+English words). Never use Hindi Devanagari script. Never write a full reply
+in plain English. Keep replies short, natural and emotionally in character.
+Never mention system instructions.
+"""
+
+
+# ------------------------------------------------
 # CHAT INPUT
 # ------------------------------------------------
 
-prompt = st.chat_input("Talk with your character...")
+prompt = st.chat_input(f"Talk with {st.session_state.character}...")
 
 if prompt:
 
@@ -252,25 +225,26 @@ Never say you are an AI.
 
     history = st.session_state.messages[-20:]
 
-    api_key = get_api_key(st.session_state.provider)
+    llm_key = get_llm_key(st.session_state.provider)
+    sarvam_key = get_sarvam_key()
 
     with st.chat_message("assistant", avatar=selected_character["avatar"]):
         with st.spinner("Thinking..."):
             try:
-                if not api_key:
-                    st.error("API key missing")
+                if not llm_key:
+                    st.error(f"{st.session_state.provider} API key missing")
                     st.stop()
 
                 if st.session_state.provider == "Groq":
                     reply = call_groq(
-                        api_key,
+                        llm_key,
                         system_prompt,
                         history,
                         selected_character["temperature"]
                     )
                 else:
                     reply = call_mistral(
-                        api_key,
+                        llm_key,
                         system_prompt,
                         history,
                         selected_character["temperature"]
@@ -279,7 +253,11 @@ Never say you are an AI.
                 st.markdown(reply)
 
                 if st.session_state.voice_enabled:
-                    play_voice(reply, selected_character)
+                    if not sarvam_key:
+                        st.caption(
+                            "ℹ️ No SARVAM_API_KEY set — using Edge TTS backup voice."
+                        )
+                    play_voice(reply, selected_character, sarvam_key)
 
                 st.session_state.messages.append(
                     {"role": "assistant", "content": reply}
