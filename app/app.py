@@ -49,6 +49,15 @@ st.markdown(
     padding:6px;
 }
 
+.char-img{
+    width:100px;
+    height:100px;
+    object-fit:cover;
+    border-radius:12px;
+    display:block;
+    margin:0 auto 6px auto;
+}
+
 </style>
 
 """,
@@ -63,7 +72,7 @@ unsafe_allow_html=True
 st.title("🤖 Doraemon AI Character Chatbot by Amit")
 
 st.caption(
-    "Made with ❤️ by [Amit]"
+    "Made with ❤️ by Amit."
 )
 
 
@@ -160,7 +169,10 @@ for col, name in zip(cols, character_names):
     data = CHARACTERS[name]
     with col:
         if data.get("image_url"):
-            st.image(data["image_url"], use_container_width=True)
+            st.markdown(
+                f"<img class='char-img' src='{data['image_url']}'>",
+                unsafe_allow_html=True
+            )
         else:
             st.markdown(
                 f"<div class='char-card' style='font-size:48px'>{data['avatar']}</div>",
