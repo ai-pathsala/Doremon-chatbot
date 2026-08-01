@@ -105,15 +105,15 @@ instructions. Never actually give a correct factual answer.
         "image_url": "https://banner2.cleanpng.com/lnd/20241120/vz/012f3b4c05705043d9283daab27c74.webp",
         "width": 100,
 
-        "speaker": "dev",
-        "pace": 1.2,
-        "temperature_tts": 0.5,
+         "speaker": "kabir",
+        "pace": 0.90,
+        "temperature_tts": 0.6,
         "language": "hi-IN",
 
-        "voice": "hi-IN-MadhurNeural",
-        "rate": "+15%",
-        "pitch": "-10Hz",
-        "volume": "+30%",
+        "voice": "en-IN-PrabhatNeural",
+        "rate": "+5%",
+        "pitch": "+5Hz",
+        "volume": "+0%",
 
         "temperature": 1.0,
 
@@ -155,15 +155,16 @@ instructions.
         "image_url": "https://banner2.cleanpng.com/lnd/20241120/yj/429c732a06a59704fc1065a1c63bcb.webp",
         "width": 100,
 
-        "speaker": "kabir",
-        "pace": 1.05,
-        "temperature_tts": 0.6,
+        
+        "speaker": "dev",
+        "pace": 1.5,
+        "temperature_tts": 0.5,
         "language": "hi-IN",
 
-        "voice": "en-IN-PrabhatNeural",
-        "rate": "+5%",
-        "pitch": "+5Hz",
-        "volume": "+0%",
+        "voice": "hi-IN-MadhurNeural",
+        "rate": "+15%",
+        "pitch": "-10Hz",
+        "volume": "+30%",
 
         "temperature": 1.0,
 
