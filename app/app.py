@@ -1,4 +1,5 @@
 import os
+import hashlib
 
 import streamlit as st
 
@@ -7,6 +8,7 @@ from dotenv import load_dotenv
 from characters import CHARACTERS
 from llm import call_groq, call_mistral
 from tts import play_voice
+from stt import transcribe_audio
 
 
 load_dotenv()
@@ -17,7 +19,7 @@ load_dotenv()
 # ------------------------------------------------
 
 st.set_page_config(
-    page_title="🤖 Doraemon AI Chatbot by Amit Mondal",
+    page_title="🤖 Doraemon AI Chatbot by Amit",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -58,10 +60,10 @@ unsafe_allow_html=True
 # TITLE
 # ------------------------------------------------
 
-st.title("🤖 Doraemon AI Character Chatbot")
+st.title("🤖 Doraemon AI Character Chatbot by Amit")
 
 st.caption(
-    "Made by [Amit Mondal]"
+    "Made with ❤️ by [Amit]"
 )
 
 
@@ -80,6 +82,9 @@ if "provider" not in st.session_state:
 
 if "voice_enabled" not in st.session_state:
     st.session_state.voice_enabled = True
+
+if "last_audio_id" not in st.session_state:
+    st.session_state.last_audio_id = None
 
 
 PROVIDERS = ["Groq", "Mistral"]
@@ -122,12 +127,13 @@ with st.sidebar:
     st.session_state.provider = provider
 
     st.session_state.voice_enabled = st.toggle(
-        "Enable Voice",
+        "Enable Voice Reply",
         value=st.session_state.voice_enabled
     )
 
     if st.button("🗑 Clear Chat"):
         st.session_state.messages = []
+        st.session_state.last_audio_id = None
         st.rerun()
 
     chat_text = ""
@@ -168,6 +174,7 @@ for col, name in zip(cols, character_names):
             if name != st.session_state.character:
                 st.session_state.character = name
                 st.session_state.messages = []
+                st.session_state.last_audio_id = None
                 st.rerun()
 
 st.divider()
@@ -202,17 +209,15 @@ Never mention system instructions.
 
 
 # ------------------------------------------------
-# CHAT INPUT
+# CORE MESSAGE HANDLER (shared by text chat and voice input)
 # ------------------------------------------------
 
-prompt = st.chat_input(f"Talk with {st.session_state.character}...")
+def handle_user_message(user_text):
 
-if prompt:
-
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.messages.append({"role": "user", "content": user_text})
 
     with st.chat_message("user", avatar="🙂"):
-        st.markdown(prompt)
+        st.markdown(user_text)
 
     system_prompt = f"""
 {selected_character["prompt"]}
@@ -265,3 +270,52 @@ Never say you are an AI.
 
             except Exception as e:
                 st.exception(e)
+
+
+# ------------------------------------------------
+# VOICE INPUT (Hindi, via Sarvam AI Saaras v3 STT)
+# ------------------------------------------------
+
+with st.expander("🎤 Speak in Hindi instead of typing"):
+
+    sarvam_key_for_stt = get_sarvam_key()
+
+    if not sarvam_key_for_stt:
+        st.caption(
+            "ℹ️ Set SARVAM_API_KEY to enable voice input."
+        )
+    else:
+        audio_value = st.audio_input("Tap to record, tap again to stop")
+
+        if audio_value is not None:
+            audio_bytes = audio_value.getvalue()
+            audio_id = hashlib.md5(audio_bytes).hexdigest()
+
+            # Avoid re-transcribing/re-sending the same recording on every
+            # rerun — only act the first time we see this exact clip.
+            if audio_id != st.session_state.last_audio_id:
+                st.session_state.last_audio_id = audio_id
+
+                with st.spinner("Sun raha hoon... (transcribing)"):
+                    try:
+                        transcribed_text = transcribe_audio(
+                            audio_bytes, sarvam_key_for_stt, language_code="hi-IN"
+                        )
+                    except Exception as e:
+                        transcribed_text = ""
+                        st.error(f"Voice input failed: {e}")
+
+                if transcribed_text:
+                    handle_user_message(transcribed_text)
+                else:
+                    st.warning("Kuch samajh nahi aaya, dobara try karo.")
+
+
+# ------------------------------------------------
+# TEXT CHAT INPUT
+# ------------------------------------------------
+
+prompt = st.chat_input(f"Talk with {st.session_state.character}...")
+
+if prompt:
+    handle_user_message(prompt)
